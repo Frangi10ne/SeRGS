@@ -8,7 +8,7 @@ The method aims at analysing functioning rather than pure productivity indices (
 Since vegetation productivity in drylands in mainly determined by precipitation, this relationship may be described through a linear regression. The slope of a linear regression is known to reflect the unit change in the dependent variable (vegetation productivity) per unit change in the independent variable (precipitation) and can therefore be used as an indicator for vegetation functioning in drylands. 
 As the slope is representing vegetation functioning - changes in the slope over time may represent changes in vegetation biophysical processes, thus indicate changes in vegetation functioning.
 
-The output of the SeRGS code will be a time series of slopes that then can be subject to either linear time series analysis or segmented trend analysis. 
+The output of the SeRGS code will be a time series of slopes that then can be subject to either linear or segmented trend analysis. 
 
 For details see:
 
