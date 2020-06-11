@@ -103,172 +103,170 @@ def getDimensions(ds):
     # print ("NDVI - Image dimensions: row: {}, column: {}, bands: {}".format(rowsx, colsx, bandsx))
     return rows, cols, bands
     
-    
-if __name__ == '__main__':
 
 
-    # ############################################# SET TIME-COUNT ###################################################### #
+# ############################################# SET TIME-COUNT ###################################################### #
 
-    starttime = time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime())
-    print("--------------------------------------------------------")
-    print("Starting process, time:" + starttime)
-    print("")
+starttime = time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime())
+print("--------------------------------------------------------")
+print("Starting process, time:" + starttime)
+print("")
 
-    # ############################################# SET INPUT VARS ###################################################### #
+# ############################################# SET INPUT VARS ###################################################### #
 
-    # set path to the folder with the input data
-    # y = DEPENDENT VARIABLE = NDVI
-    path_y = r""
-    y_wildcard = ""     # To identify the correct files in the folder. What do the relevant filenames start with? e.g. "GIMMS"
-    # minimum and maximum values of your data range. for NDVI e.g. min = 0, max = 1 or 1000 
-    # values outside this range will be set to NaN
-    minval_y =
-    maxval_y =
-    
-
-    # x = INDEPENDENT VARIABLE = RAINFALL
-    path_x = r""
-    x_wildcard = ""     # To identify the correct files in the folder. What do the relevant filenames start with? e.g. "CHIRPS"
-    # minimum and maximum values of your data range. for rainfall annual mean e.g. min = 0, max = 1000
-    # values outside this range will be set to NaN
-    minval_x =
-    maxval_x =
-    
-    # SET A MASK TO EXCLUDE NODATA. 0 = NODATA, 1 = DATA
-    nodata_path = r"
-    inDS_nodata = getDS(nodata_path)
-    nodata_array = inDS_nodata.GetRasterBand(1).ReadAsArray().astype(np.int)
+# set path to the folder with the input data
+# y = DEPENDENT VARIABLE = NDVI
+path_y = r""
+y_wildcard = ""     # To identify the correct files in the folder. What do the relevant filenames start with? e.g. "GIMMS"
+# minimum and maximum values of your data range. for NDVI e.g. min = 0, max = 1 or 1000 
+# values outside this range will be set to NaN
+minval_y =
+maxval_y =
 
 
-    # SET A REFERENCE IMAGE (reference in terms of spatial dimension and geo-reference), e.g. ONE OF THE INPUT IMAGES 
-    ref_image = r"... .tif"
-    inDS = getDS(ref_image)
-    rows, cols, _ = getDimensions(inDS)
-    
-    outPath = os.path.join(r"", "SeRGS_output")
-    if not os.path.exists(outPath): os.makedirs(outPath)
+# x = INDEPENDENT VARIABLE = RAINFALL
+path_x = r""
+x_wildcard = ""     # To identify the correct files in the folder. What do the relevant filenames start with? e.g. "CHIRPS"
+# minimum and maximum values of your data range. for rainfall annual mean e.g. min = 0, max = 1000
+# values outside this range will be set to NaN
+minval_x =
+maxval_x =
 
-    # SET SOME NAME FOR THE OUTPUT FILES
-    # THEY WILL HAVE THE SHAPE: "SeRGS_slope_" + str(year + center_year) + str(suffix) + ".tif"
-    # so it could include the test area and spatial resolution "_senegal_1000m" or include the parameters "_senegal_7x7_4years_1000m"
-    suffix = ""
+# SET A MASK TO EXCLUDE NODATA. 0 = NODATA, 1 = DATA
+nodata_path = r"
+inDS_nodata = getDS(nodata_path)
+nodata_array = inDS_nodata.GetRasterBand(1).ReadAsArray().astype(np.int)
 
 
-    # Spatially mowing window size
-    smw_size =  # e.g. 7
-    
-    # DEFINE OFFSET (left and right) from center Pixel for spatially moving window size.
-    offl = int(smw_size/2)
-    offr = offl + 1
+# SET A REFERENCE IMAGE (reference in terms of spatial dimension and geo-reference), e.g. ONE OF THE INPUT IMAGES 
+ref_image = r"... .tif"
+inDS = getDS(ref_image)
+rows, cols, _ = getDimensions(inDS)
 
-    pad_with = int(smw_size / 2)
+outPath = os.path.join(r"", "SeRGS_output")
+if not os.path.exists(outPath): os.makedirs(outPath)
 
-    # Temporally mowing window size 
-    tmw_size =  # e.g. 4
+# SET SOME NAME FOR THE OUTPUT FILES
+# THEY WILL HAVE THE SHAPE: "SeRGS_slope_" + str(year + center_year) + str(suffix) + ".tif"
+# so it could include the test area and spatial resolution "_senegal_1000m" or include the parameters "_senegal_7x7_4years_1000m"
+suffix = ""
 
-    center_year = int(tmw_size/2)
-    
-    # SET THE RANGE OF THE DATA
-    # for a yearly time series from 2000 - 2016, and a temporal window of 4 years e.g.
-    ### 1. moving window: 2000, 2001, 2002, 2003 (= range (2000, 2004))
-    ### 2. moving window: 2001, 2002, 2003, 2004 (= range (2001, 2005))
-    ### last moving window: 2013, 2014, 2015, 2016 (= range (2013, 2017)) --> 2013 is the last year in the new range, where the moving window should start
-        
-    startyear = 2000
-    endyear = 2017
-    endrangeyear = endyear - (tmw_size - 1)
-    
-    year_range = range(startyear, endyear)      # = total year range
-    new_range = range(startyear, endrangeyear)  # = range the moving windows are based on
 
-    
-    # ################################################## MAIN PART ###################################################### #
+# Spatially mowing window size
+smw_size =  # e.g. 7
 
-    starttime = time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime())
+# DEFINE OFFSET (left and right) from center Pixel for spatially moving window size.
+offl = int(smw_size/2)
+offr = offl + 1
 
-    gdal.AllRegister()
-    
-    for year in new_range:
-        period = year_range[year - startyear:year + tmw_size - startyear]
+pad_with = int(smw_size / 2)
 
-        ndvi_list = get_rasterdata(path_y, period, dataset=y_wildcard, minval=minval_y, maxval=maxval_y, pad_with=pad_with)
-        rain_list = get_rasterdata(path_x, period, dataset=x_wildcard, minval=minval_x, maxval=maxval_x, pad_with=pad_with)
+# Temporally mowing window size 
+tmw_size =  # e.g. 4
 
-        rows_i = ndvi_list.shape[1]  
-        cols_i = ndvi_list.shape[2]
-        
-        slope_array     = np.zeros((rows, cols))
-        intercept_array = np.zeros((rows, cols))
-        corcoef_array   = np.zeros((rows, cols))
-        pvalue_array    = np.zeros((rows, cols))
-        
-        print("Create array from spatial window and run regression model ...")
-        start = time.time()
-        
-        for x in range(pad_with, (rows_i - pad_with)):
-            for y in range(pad_with, (cols_i - pad_with)):
-            
-                nodata = nodata_array[x - pad_with, y - pad_with]
+center_year = int(tmw_size/2)
 
-                if (nodata == 0):
+# SET THE RANGE OF THE DATA
+# for a yearly time series from 2000 - 2016, and a temporal window of 4 years e.g.
+### 1. moving window: 2000, 2001, 2002, 2003 (= range (2000, 2004))
+### 2. moving window: 2001, 2002, 2003, 2004 (= range (2001, 2005))
+### last moving window: 2013, 2014, 2015, 2016 (= range (2013, 2017)) --> 2013 is the last year in the new range, where the moving window should start
 
+startyear = 2000
+endyear = 2017
+endrangeyear = endyear - (tmw_size - 1)
+
+year_range = range(startyear, endyear)      # = total year range
+new_range = range(startyear, endrangeyear)  # = range the moving windows are based on
+
+
+# ################################################## MAIN PART ###################################################### #
+
+starttime = time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime())
+
+gdal.AllRegister()
+
+for year in new_range:
+    period = year_range[year - startyear:year + tmw_size - startyear]
+
+    ndvi_list = get_rasterdata(path_y, period, dataset=y_wildcard, minval=minval_y, maxval=maxval_y, pad_with=pad_with)
+    rain_list = get_rasterdata(path_x, period, dataset=x_wildcard, minval=minval_x, maxval=maxval_x, pad_with=pad_with)
+
+    rows_i = ndvi_list.shape[1]  
+    cols_i = ndvi_list.shape[2]
+
+    slope_array     = np.zeros((rows, cols))
+    intercept_array = np.zeros((rows, cols))
+    corcoef_array   = np.zeros((rows, cols))
+    pvalue_array    = np.zeros((rows, cols))
+
+    print("Create array from spatial window and run regression model ...")
+    start = time.time()
+
+    for x in range(pad_with, (rows_i - pad_with)):
+        for y in range(pad_with, (cols_i - pad_with)):
+
+            nodata = nodata_array[x - pad_with, y - pad_with]
+
+            if (nodata == 0):
+
+                slope_array[x - pad_with, y - pad_with]     = np.NaN
+                intercept_array[x - pad_with, y - pad_with] = np.NaN
+                corcoef_array[x - pad_with, y - pad_with]   = np.NaN
+                pvalue_array[x - pad_with, y - pad_with]    = np.NaN
+
+
+            elif (nodata == 1):
+
+                target_y = ndvi_list[:, x - offl:x + offr, y - offl:y + offr] 
+                target_x = rain_list[:, x - offl:x + offr, y - offl:y + offr]  
+
+                target_y = target_y.flatten()
+                target_x = target_x.flatten()
+
+                mask = np.isfinite(target_y) & np.isfinite(target_x)
+
+                # check for NoData values within the input data.
+                # if more than 1/3 of the values are NoData - don't calculate the regression (assumed to be to little points)
+                # that may be adjusted.
+
+                if (len(target_y[mask]) < len(target_y) / 3) or (len(target_x[mask]) < len(target_x) / 3):
                     slope_array[x - pad_with, y - pad_with]     = np.NaN
                     intercept_array[x - pad_with, y - pad_with] = np.NaN
                     corcoef_array[x - pad_with, y - pad_with]   = np.NaN
                     pvalue_array[x - pad_with, y - pad_with]    = np.NaN
+                else:
+                    target_y = target_y[mask]
+                    target_x = target_x[mask]
+
+                    ols_results = stats.linregress(target_x, target_y)
+
+                    slope_array[x - pad_with, y - pad_with]     = ols_results[0]
+                    intercept_array[x - pad_with, y - pad_with] = ols_results[1]
+                    corcoef_array[x - pad_with, y - pad_with]   = ols_results[2]
+                    pvalue_array[x - pad_with, y - pad_with]    = ols_results[3]
 
 
-                elif (nodata == 1):
+out_name_slope = "SeRGS_slope_" + str(year + center_year) + str(suffix) + ".tif"
+out_path_slope = outPath + "\\" + out_name_slope
+WriteArray(slope_array, out_path_slope, ref_image)
 
-                    target_y = ndvi_list[:, x - offl:x + offr, y - offl:y + offr] 
-                    target_x = rain_list[:, x - offl:x + offr, y - offl:y + offr]  
+out_name_intercept = "SeRGS_intercept_" + str(year + center_year) + str(suffix) + ".tif"
+out_path_intercept = outPath + "\\" + out_name_intercept
+WriteArray(intercept_array, out_path_intercept, ref_image)
 
-                    target_y = target_y.flatten()
-                    target_x = target_x.flatten()
+out_name_corcoef = "SeRGS_corcoef_" + str(year + center_year) + str(suffix) + ".tif"
+out_path_corcoef = outPath + "\\" + out_name_corcoef
+WriteArray(corcoef_array, out_path_corcoef, ref_image)
 
-                    mask = np.isfinite(target_y) & np.isfinite(target_x)
-                    
-                    # check for NoData values within the input data.
-                    # if more than 1/3 of the values are NoData - don't calculate the regression (assumed to be to little points)
-                    # that may be adjusted.
-
-                    if (len(target_y[mask]) < len(target_y) / 3) or (len(target_x[mask]) < len(target_x) / 3):
-                        slope_array[x - pad_with, y - pad_with]     = np.NaN
-                        intercept_array[x - pad_with, y - pad_with] = np.NaN
-                        corcoef_array[x - pad_with, y - pad_with]   = np.NaN
-                        pvalue_array[x - pad_with, y - pad_with]    = np.NaN
-                    else:
-                        target_y = target_y[mask]
-                        target_x = target_x[mask]
-
-                        ols_results = stats.linregress(target_x, target_y)
-
-                        slope_array[x - pad_with, y - pad_with]     = ols_results[0]
-                        intercept_array[x - pad_with, y - pad_with] = ols_results[1]
-                        corcoef_array[x - pad_with, y - pad_with]   = ols_results[2]
-                        pvalue_array[x - pad_with, y - pad_with]    = ols_results[3]
-        
-        
-    out_name_slope = "SeRGS_slope_" + str(year + center_year) + str(suffix) + ".tif"
-    out_path_slope = outPath + "\\" + out_name_slope
-    WriteArray(slope_array, out_path_slope, ref_image)
-
-    out_name_intercept = "SeRGS_intercept_" + str(year + center_year) + str(suffix) + ".tif"
-    out_path_intercept = outPath + "\\" + out_name_intercept
-    WriteArray(intercept_array, out_path_intercept, ref_image)
-
-    out_name_corcoef = "SeRGS_corcoef_" + str(year + center_year) + str(suffix) + ".tif"
-    out_path_corcoef = outPath + "\\" + out_name_corcoef
-    WriteArray(corcoef_array, out_path_corcoef, ref_image)
-
-    out_name_pvalue = "SeRGS_pvalue_" + str(year + center_year) + str(suffix) + ".tif"
-    out_path_pvalue = outPath + "\\" + out_name_pvalue
-    WriteArray(pvalue_array, out_path_pvalue, ref_image)
+out_name_pvalue = "SeRGS_pvalue_" + str(year + center_year) + str(suffix) + ".tif"
+out_path_pvalue = outPath + "\\" + out_name_pvalue
+WriteArray(pvalue_array, out_path_pvalue, ref_image)
 
 
-    end = time.time()
-    print("Regression for ({}x{}) window for {} - Execution time: {} seconds".format(smw_size, smw_size, period, end - start))
-    print ("---------------------------------------------------------------------------")
+end = time.time()
+print("Regression for ({}x{}) window for {} - Execution time: {} seconds".format(smw_size, smw_size, period, end - start))
+print ("---------------------------------------------------------------------------")
 
 
 endtime = time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime())
