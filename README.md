@@ -15,7 +15,7 @@ For details see:
 https://www.sciencedirect.com/science/article/pii/S0034425719300653
 
 
-Principal Component Analysis & Regression
+# Driver analysis - Principal Component Analysis & Regression
 
 To estimate the relative importance of various variables potentially driving annual variations and long-term changes in vegetation functioning (SeRGS) we introduces a systematic data-driven, multiple regression approach (based on Seddon et al. (2016)).
 
@@ -23,4 +23,4 @@ On a per-pixel level, a Principal Component Analysis (PCA) is performed on the t
 
 For details see:
 
-* Manuscript currently under revision.
+*** Manuscript currently under revision.
