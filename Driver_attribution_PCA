@@ -1,0 +1,434 @@
+__author__ = 'Christin'
+
+import os, sys
+import gdal
+from gdalconst import *
+import time
+import fnmatch
+import numpy as np
+import pandas as pd
+import statsmodels.api as stm
+
+from sklearn.preprocessing import scale
+from sklearn.decomposition import PCA
+
+
+##### --- GDAL HELPER ------------------------------------------------------------------------------------------- #####
+
+def getDS(ds):
+    if type(ds) is str:
+        assert os.path.exists(ds)
+        ds = gdal.Open(ds, GA_ReadOnly)
+        if ds is None:
+            print ('Could not open {}.'.format(ds))
+            sys.exit(1)
+    return ds
+
+
+def getSpatialInfo(ds):
+    proj = ds.GetProjection()
+    geotrans = ds.GetGeoTransform()
+    # print ("Spatial Resolution: {}".format(y_geotrans[1]))
+    return proj, geotrans
+
+
+def getDimensions(ds):
+    rows = ds.RasterYSize
+    cols = ds.RasterXSize
+    bands = ds.RasterCount
+    # print ("NDVI - Image dimensions: row: {}, column: {}, bands: {}".format(rowsx, colsx, bandsx))
+    return rows, cols, bands
+    
+    
+    
+##### --- SOME MORE FUNCTIONS ---------------------------------------------------------------------------------------- #####
+
+def findRasters(path, filter):
+    for root, dirs, files in os.walk(path):
+        for file in fnmatch.filter(files, filter):
+            file = path + "\\" + file
+            yield file
+        break
+
+
+
+def get_rasterdata (inPath, year_range, nodata, dataset, minval, maxval):
+
+    tmp_list = []
+    raster_list = []
+    for year in year_range:
+        for raster in findRasters(inPath, str(dataset) + "*" + str(year) + "*.tif"):
+            global inDS, rows, cols
+            inDS = getDS(raster)
+            print (raster)
+
+            proj, geotrans = getSpatialInfo(inDS)  # print ("NDVI - Spatial Resolution: {}".format(y_geotrans[1]))
+            rows, cols, bands = getDimensions(inDS)  # cols:107  rows:137
+
+            array = inDS.GetRasterBand(1).ReadAsArray().astype(np.float)  # convert band to array
+            array[nodata == 0] = np.NaN
+            array[array < minval] = np.NaN
+            array[array > maxval] = np.NaN
+            tmp_list.append(array) # (np.nanmean(array))
+
+        raster_list = np.array(tmp_list)
+
+    return raster_list
+
+
+def get_rasterdata_song(inPath, year_range, nodata, dataset, minval, maxval):
+    print(inPath)
+    tmp_list_1 = []
+    tmp_list_2 = []
+    tmp_list_3 = []
+    raster_list_1 = []
+    raster_list_2 = []
+    raster_list_3 = []
+    for year in year_range:
+        for raster in findRasters(inPath, str(dataset) + "*" + str(year) + "*.tif"):
+            global inDS, rows, cols
+            print(raster)
+            inDS = getDS(raster)
+
+            proj, geotrans = getSpatialInfo(inDS)  # print ("NDVI - Spatial Resolution: {}".format(y_geotrans[1]))
+            rows, cols, bands = getDimensions(inDS)  # cols:107  rows:137
+            # print (rows, cols)
+
+            array_1 = inDS.GetRasterBand(1).ReadAsArray().astype(np.float)  # convert band to array
+            array_2 = inDS.GetRasterBand(2).ReadAsArray().astype(np.float)  # convert band to array
+            array_3 = inDS.GetRasterBand(3).ReadAsArray().astype(np.float)  # convert band to array
+            array_1[nodata == 0] = np.NaN
+            array_2[nodata == 0] = np.NaN
+            array_3[nodata == 0] = np.NaN
+            array_1[array_1 < minval] = np.NaN
+            array_1[array_1 > maxval] = np.NaN
+            array_2[array_2 < minval] = np.NaN
+            array_2[array_2 > maxval] = np.NaN
+            array_3[array_3 < minval] = np.NaN
+            array_3[array_3 > maxval] = np.NaN
+
+            tmp_list_1.append((array_1))  # (np.nanmean(array))
+            tmp_list_2.append((array_2))  # (np.nanmean(array))
+            tmp_list_3.append((array_3))  # (np.nanmean(array))
+
+        raster_list_1 = np.array(tmp_list_1)
+        raster_list_2 = np.array(tmp_list_2)
+        raster_list_3 = np.array(tmp_list_3)
+
+    # print (raster_list)
+    return raster_list_1, raster_list_2, raster_list_3
+
+
+def pcr(X,y, pc_cols, thresh_val):
+    ''' SOURCE: https://www.idtools.com.au/principal-component-regression-python-2/ '''
+    ''' Principal Component Regression in Python'''
+    
+    ''' Step 1: PCA on input data'''
+ 
+    # Define the PCA object
+    pca = PCA()
+    pca_fit = pca.fit_transform(X)
+
+    ### Principal axes in feature space, representing the directions of maximum variance in the data. 
+    ### The components are sorted by explained_variance_
+    pca_expvar = pca.explained_variance_ratio_
+    pca_loadings = pca.components_
+    pca_scores = pd.DataFrame(data = pca_fit, columns = pc_cols)
+
+    ### set a threshold for how many PCs will be included in the PCR to reduce degrees of freedom! and ultimately increase significance!
+    thresh = [x for x in pca.explained_variance_ratio_ if x >= thresh_val]
+
+    ''' Step 2: regression on selected principal components'''
+
+    # Regression with statsmodel
+    pca_fit_c = stm.add_constant(pca_fit[:, :len(thresh)])
+
+    ols_model = stm.OLS(y, pca_fit_c)
+    ols_results = ols_model.fit()
+
+    return(pca_expvar, pca_loadings, pca_scores, ols_results)
+
+
+def WriteArray(array, outPath, refDS):
+    format = "GTiff"
+    driver = gdal.GetDriverByName(format)
+
+    if not os.path.isfile(outPath):
+        outDs = driver.Create(outPath, array.shape[1], array.shape[0], 1, GDT_Float64)
+        if outDs is None:
+            print ('Could not create QA image.')
+            sys.exit(1)
+        outBand = outDs.GetRasterBand(1)
+
+        print ("Write array to raster image ...")
+        outBand.WriteArray(array)
+
+        # flush data to disk, set the NoData value and calculate stats
+        outBand.FlushCache()
+        # outBand.SetNoDataValue(99)
+
+        # georeference the image and set the projection
+        inREF = gdal.Open(refDS)
+        outDs.SetGeoTransform(inREF.GetGeoTransform())
+        outDs.SetProjection(inREF.GetProjection())
+
+        # build pyramids
+        gdal.SetConfigOption('HFA_USE_RRD', 'YES')
+        #outDs.BuildOverviews(overviewlist=[2, 4, 8, 16, 32, 64, 128])
+
+        outDs = None
+
+        
+def WriteArray_multiband(array, outPath, refDS):
+    format = "GTiff"
+    driver = gdal.GetDriverByName(format)
+
+    array[np.isnan(array)] = -99
+    if not os.path.isfile(outPath):
+        outDs = driver.Create(outPath, array.shape[2], array.shape[1], array.shape[0], GDT_Float64)
+        if outDs is None:
+            print ('Could not create image.')
+            sys.exit(1)
+        
+        # georeference the image and set the projection
+        inREF = gdal.Open(refDS)
+        outDs.SetGeoTransform(inREF.GetGeoTransform())
+        outDs.SetProjection(inREF.GetProjection())
+        
+        print ("Write array to raster image ...")
+        for i, image in enumerate(array, 1):
+            outDs.GetRasterBand(i).WriteArray( image )
+            outDs.GetRasterBand(i).SetNoDataValue(-99)
+
+        outDs.FlushCache()
+        outDs = None
+
+
+
+##### --- SOME USER INPUT ---------------------------------------------------------------------------------------- #####
+
+### set a threshold for the explanatory power of the components. 
+### above this threshold components will be included in the regression. Below not.
+p_level = ...
+
+startyear  = ...  
+endyear    = ...
+year_range = range(startyear, endyear)
+ 
+
+# SET A MASK TO EXCLUDE NODATA. 0 = NODATA, 1 = DATA
+nodata_path = r" ..."
+inDS_nodata = getDS(nodata_path)
+nodata_array = inDS_nodata.GetRasterBand(1).ReadAsArray().astype(np.int)
+
+# SET A REFERENCE IMAGE (reference in terms of spatial dimension and geo-reference), e.g. ONE OF THE INPUT IMAGES 
+ref_image = r"... .tif"
+inDS = getDS(ref_image)
+rows, cols, _ = getDimensions(inDS)
+
+# SET PATH TO SAVE THE OUTPUT
+outPath = os.path.join(r"...", "SeRGS_DRIVERS")
+if not os.path.exists(outPath): os.makedirs(outPath)
+
+# SET SOME NAME FOR THE OUTPUT FILES
+# THEY WILL HAVE THE SHAPE: SeRGS_drivers_from_PCR_p_" + str(p_level) + suffix + ".tif"
+# so it could include the test area and spatial resolution "_senegal_1000m" or include the parameters "_temp_sm_fire_pop_lc"
+suffix = "..."
+
+
+# set paths to the folders with the input data
+# Results from the SeRGS analysis:
+path_sergs = r"..."
+
+# Potential driving factors: Temperature (tmp), soil moisture (sm), fire frequency (burn), land cover change (lc)
+path_tmp  = r"..."
+path_sm   = r"..."
+path_burn = r"..."
+path_lc  =  r"..."
+
+# Population density (pop) - this is given here as one stacked file 
+path_pop =  r"... .tif"
+
+# To identify the correct files in the folder. What do the relevant filenames start with? e.g. "CHIRPS"
+sergs_wildcard  = "..." e.g. "SeRGS_slope"    
+tmp_wildcard    = "..." e.g. "Temp"    
+sm_wildcard     = "..." e.g. "CCS"    
+burn_wildcard   = "..." e.g. "MOD64A1"    
+lc_wildcard     = "..." e.g. "VCF"   
+
+# minimum and maximum values of your data range. for rainfall annual mean e.g. min = 0, max = 1000
+# values outside this range will be set to NaN
+
+### LOAD DATA #### 
+
+sergs_list  = get_rasterdata(path_sergs,  year_range, nodata_array, dataset=sergs_wildcard, minval= ..., maxval=...)
+tmp_list    = get_rasterdata(path_tmp,    year_range, nodata_array, dataset=tmp_wildcard,   minval= ..., maxval=...) 
+sm_list     = get_rasterdata(path_sm,     year_range, nodata_array, dataset=sm_wildcard,    minval= ..., maxval=...) 
+burned_list = get_rasterdata(path_burn,   year_range, nodata_array, dataset=burn_wildcard,  minval= ..., maxval=...)
+song_tc, _, song_bs = get_rasterdata_song(path_lc, year_range, nodata_array, dataset=lc_wildcard, minval=..., maxval=...)
+
+inDS_pop = getDS(path_pop)
+_, _, bands = getDimensions(inDS_pop)
+
+pop_list = []
+for b in range(1, bands):  # make sure the bands in the stacked file match the start and end year.
+    pop_array=[]
+    pop_array = inDS_pop.GetRasterBand(b).ReadAsArray().astype(np.float)
+
+    pop_array[nodata_array == 0] = np.NaN
+    pop_list.append(pop_array)
+pop_list = np.array(pop_list)
+
+
+rows = sergs_list.shape[1] 
+cols = sergs_list.shape[2]
+
+
+# ################################################## MAIN PART ###################################################### #
+
+start = time.time()
+print("start: {}".format(start))
+
+
+pc_columns = ['PC1', 'PC2', 'PC3', 'PC4', 'PC5', 'PC6']
+pc_len = (len(pc_columns))
+
+absolute_weight_list = np.zeros((pc_len, rows, cols))
+relative_weight_list = np.zeros((pc_len, rows, cols))
+most_important = np.zeros((rows, cols))
+
+for x in range(0, (rows)):
+    for y in range(0, (cols)):
+
+          nodata = nodata_array[x, y]
+
+          if (nodata == 0):
+
+              absolute_weight_list[:, x, y] = np.full(pc_len, np.NaN)
+              relative_weight_list[:, x, y] = np.full(pc_len, np.NaN)
+              most_important[x, y] = np.NaN
+
+          elif (nodata == 1):
+
+              pcr_slope = []
+
+              sergs = sergs_list[:, x, y]
+              var1 = sm_list[:, x, y]
+              var2 = tmp_list[:, x, y]
+              var3 = burned_list[:, x, y]
+              var4 = pop_list[:, x, y]
+              var5 = song_tc[:, x, y]
+              var6 = song_bs[:, x, y]
+
+              df = pd.DataFrame(
+                  {"SeRGS": scale(sergs), "var1": scale(var1), "var2": scale(var2), "var3": scale(var3),
+                   "var4": scale(var4), "var5": scale(var5), "var6": scale(var6), "year": year_range})
+
+              df_var = df.drop(['year', 'SeRGS'], 1)
+              df_dep = df.drop(['year', 'var1', 'var2', 'var3', 'var4', 'var5', 'var6'], 1)
+
+              ### Check for NaN values and exclude Pixels when already only one is found.
+              # df['pop_dens'].interpolate(method='linear', inplace=True)
+
+              nan_list = []
+              null_check = (df_var.isnull().sum())
+              for idx, val in zip(null_check.index, null_check):
+                  if ((val > 1) & (val <= 5)):
+                      df_var[str(idx)].interpolate(method='linear', inplace=True)
+
+              null_check = (df_var.isnull().sum())
+              null_check_dep = (df_dep.isnull().sum())
+
+              if (null_check_dep[0] > 0):
+                  nan_list.append(1)
+              else:
+                  for i in range(0, pc_len):
+                      if ((null_check[i] > 0)):
+                          nan_list.append(1)
+
+              if (nan_list):
+
+                  absolute_weight_list[:, x, y] = np.full(pc_len, np.NaN)
+                  relative_weight_list[:, x, y] = np.full(pc_len, np.NaN)
+                  most_important[x, y] = np.NaN
+
+
+              else:
+                  ### PRINCIPAL COMPONENT REGRESSION
+                  pca_expvar, pca_loadings, pca_scores, linear_model = pcr(df_var, df_dep, pc_columns, 0)
+
+                  sig = np.where(linear_model.pvalues[1:(pc_len + 1)] <= p_level)
+                  sig = sig[0]
+
+                  sig_comp = len(sig)
+                  sigload = 0
+                  absolute_importance = 0
+                  relative_importance = 0
+                  important = 0
+
+                  if sig_comp == 0:
+                      equal_weight = (100 / pc_len)
+                      zero_weight = 0
+
+                      absolute_importance = np.full(pc_len, equal_weight)
+                      relative_importance = np.full(pc_len, equal_weight)
+                      important = 99
+
+                  elif sig_comp == 1:
+                      ## get the loadings for the significant component
+                      ## LOADINGS == CORRELATION BETWEEN VARIABLES AND PC
+                      sigload = pca_loadings[sig]
+                      sigload = (sigload[0])
+
+                      ## get the slope for the significant component
+                      slope = linear_model.params[1:(pc_len + 1)][sig]
+                      sigslope = float(slope)
+
+                      ## calculate the weight for each climate variable within the significant component
+                      absolute_importance = abs(sigload * sigslope)
+                      relative_importance = (absolute_importance / np.sum(absolute_importance)) * 100
+                      important = np.argmax(absolute_importance)
+
+
+                  elif sig_comp > 1:
+                      sigload_list = []
+                      for s in sig:
+                          ## get the loadings for the significant components
+                          sigload_list.append(pca_loadings[s])
+
+                      ## get the slopes for the significant components
+                      slope = linear_model.params[1:(pc_len + 1)][sig]
+                      sigslope = slope
+
+                      ## calculate the weight for each variable within the significant component
+                      var_weight = []
+
+                      for l in range(0, len(sig)):
+                          pre_weight = abs(sigload_list[l] * sigslope[l])
+                          var_weight.append(pre_weight)
+
+                      absolute_importance = np.sum(var_weight, axis=0)
+                      relative_importance = (absolute_importance / np.sum(absolute_importance)) * 100
+                      important = np.argmax(absolute_importance)
+
+
+                  absolute_weight_list[:, x, y] = absolute_importance
+                  relative_weight_list[:, x, y] = relative_importance
+                  most_important[x, y] = important
+
+
+out_name_abs_weights = "SeRGS_drivers_from_PCR_absolute_p" + str(p_level) + suffix
+out_path_abs_weights = outPath + "\\" + out_name_abs_weights
+WriteArray_multiband(absolute_weight_list, out_path_abs_weights, ref_image)
+
+out_name_weights = "SeRGS_drivers_from_PCR_relative_p" + str(p_level) + suffix
+out_path_weights = outPath + "\\" + out_name_weights
+WriteArray_multiband(relative_weight_list, out_path_weights, ref_image)
+
+out_name_most_important = "SeRGS_drivers_from_PCR_most_important_p" + str(p_level) + suffix
+out_path_most_important = outPath + "\\" + out_name_most_important
+WriteArray(most_important, out_path_most_important, ref_image)
+
+
+end = time.time()
+print("end - start: {}".format(end - start))
