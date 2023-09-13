@@ -23,4 +23,4 @@ On a per-pixel level, a Principal Component Analysis (PCA) is performed on the t
 
 For details see:
 
-*** Manuscript currently under revision.
+https://www.nature.com/articles/s41893-020-00597-z
